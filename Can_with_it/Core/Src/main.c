@@ -33,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_BUFF_LEN 4096
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,10 +55,15 @@ TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint16_t rawValues[2];
-char msg[32];
-uint32_t dac_val;
-uint32_t getDac;
+uint16_t rawValues[2];//array to store values from the adc
+char msg[32];//debugging array for uart
+uint32_t dac_val;//function to write value to the dac
+uint32_t getDac;//debugging integer for dac
+
+//Error codes
+char* adcNcalib = "ADC calibration failure!\r\n";
+char* potShortPedal = "Potentiometers have shorted!\r\n";
+char* deviationCheckFail = "Deviation is above 10%!\r\n";
 
 
 /* USER CODE END PV */
@@ -73,8 +78,6 @@ static void MX_DAC1_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
-//void ADC_Select_CH5(void);
-//void ADC_Select_CH6(void);
 uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	dac_val = dacInput(rawValues[0], rawValues[1]);
@@ -109,7 +112,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-//  RCC -> CR |= (1<<0);
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -121,8 +124,13 @@ int main(void)
   MX_TIM6_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-//  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)rawValues, 2);
-//  dac_val = dacInput(rawValues[0], rawValues[1]);
+  if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED)!=HAL_OK){
+	  HAL_UART_Transmit(&huart2, (uint8_t*)adcNcalib, strlen(adcNcalib), 100);
+	  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  }
+
+  uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1, ADC_SINGLE_ENDED);
+
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)rawValues, 2);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start_IT(&htim6);
@@ -498,69 +506,53 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void ADC_Select_CH5 (void)
-{
-	ADC_ChannelConfTypeDef sConfig = {0};
-	  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-	  */
-	  sConfig.Channel = ADC_CHANNEL_5;
-	  sConfig.Rank = ADC_REGULAR_RANK_1;
-	  sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
-	  sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	  sConfig.OffsetNumber = ADC_OFFSET_NONE;
-	  sConfig.Offset = 0;
-	  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-	  {
-	     Error_Handler();
-	  }
-}
-
-void ADC_Select_CH6 (void)
-{
-	ADC_ChannelConfTypeDef sConfig = {0};
-	  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-	  */
-	  sConfig.Channel = ADC_CHANNEL_6;
-	  sConfig.Rank = ADC_REGULAR_RANK_1;
-	  sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
-	  sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	  sConfig.OffsetNumber = ADC_OFFSET_NONE;
-	  sConfig.Offset = 0;
-	  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-	  {
-	     Error_Handler();
-	  }
-}
 
 uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
+	static uint16_t counter = 0;
+	static uint32_t rawcheck1 = 0;
+	static uint32_t rawcheck2 = 0;
+
+	uint32_t out = 0;
+
 	uint32_t raw1 = adcinput1;
-	uint32_t raw2 = adcinput2;
-//	uint32_t raw2 = adcinput2*9/8;
+	uint32_t raw2 = adcinput2*9/8;
 
-//	uint32_t deviationCheck = abs(raw1-raw2)/100;
+	uint32_t deviationCheck = abs(raw1-raw2)/100;
 
-//	if(raw1 == raw2){
-//
-//	}
-//	else if(deviationCheck>0.1){
-//
-//	}
-//	else{
-		uint32_t out = ((raw1+raw2)/2);
-		return out;
-//	}
+	//check if both values are same for 1 second
+	if((raw1!=0) && (raw2!=0) && raw1 == raw2){
+		//check if raw1 is continuously the same
+		if((raw1 != rawcheck1) && (raw2 != rawcheck2)){
+			counter = 0;
+		}
+		//set static value to be compared later
+		rawcheck1 = raw1;
+		rawcheck2 = raw2;
+
+		counter++;
+
+		if(counter > 999){
+			counter = 0;
+			//compare to see if they are still the same
+			if(rawcheck1 == raw1 && rawcheck2 == raw2){
+				out = 0;
+				HAL_UART_Transmit(&huart2, (uint8_t*)potShortPedal, strlen(potShortPedal), 100);
+			}
+		}
+	}
+	//check deviation
+	else if(deviationCheck>0.1){
+		out = 0;
+		HAL_UART_Transmit(&huart2, (uint8_t*)deviationCheckFail, strlen(deviationCheckFail), 100);
+	}
+	//regular output function(average value)
+	else{
+		out = ((raw1+raw2)/2);
+	}
+
+	return out;
 }
 
-
-//void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc){
-//	for(int i = 0;i<halfN ; i++) dac_buff[i] = adc_buff[i];
-//	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//}
-//
-//void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
-//	for(int i = halfN; i<N ; i++) dac_buff[i] = adc_buff[i];
-//	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-//}
 
 
 /* USER CODE END 4 */
