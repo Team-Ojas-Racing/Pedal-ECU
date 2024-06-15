@@ -130,6 +130,8 @@ int main(void)
   }
 
   uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1, ADC_SINGLE_ENDED);
+  sprintf(msg,"%lu",calibrationValue);
+  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)rawValues, 2);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
