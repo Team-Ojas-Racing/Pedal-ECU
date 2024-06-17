@@ -3,11 +3,22 @@
 
 ## Roadmap
 
-- [ ] function to handle pedal usage: -> take adc inputs -> check for deviation and average the inputs -> check if inputs are same for a specified time period -> output using DAC -> output using CAN
-- [ ] functions for CAN communication: -> receive messages from BMS and motor controller -> decode message and send to driver interface using UART
-- [ ] Receive the data serial (UART) data from Pedal ECU -> Convert to the required format -> Send to Driver Interface application
-- [ ] Auto-start the Driver-Interface as soon as vehicle starts and start receiving data  
+- [x] Function to handle pedal usage:
+  - [x] Take ADC inputs
+  - [x] Check for deviation and average the inputs
+  - [x] Check if inputs are the same for a specified time period (shorting for 1 second or less)
+  - [x] Output using DAC
+  - [ ] Output using CAN
+  - [ ] Error codes for ADC calibration, potentiometer shorting, deviation check fail
 
-#### Additional:
-- [ ] Add any more additional features that are not essential but are needed over here
+- [ ] Functions for CAN communication:
+  - [ ] Receive messages from BMS and motor controller
+  - [x] Decode message and send to driver interface using UART
+
+- [ ] Receive the data serial (UART) data from Pedal ECU:
+  - [ ] Convert to the required format
+  - [ ] Send to Driver Interface application
+
+- [ ] Auto-start the Driver-Interface as soon as the vehicle starts and start receiving data  
+
 
