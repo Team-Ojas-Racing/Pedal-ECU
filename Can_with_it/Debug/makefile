@@ -64,8 +64,8 @@ all: main-build
 main-build: Can_with_it.elf secondary-outputs
 
 # Tool invocations
-Can_with_it.elf Can_with_it.map: $(OBJS) $(USER_OBJS) C:\Users\verma\OneDrive\Desktop\Team\ OJAS\CourseMCUWS\Can_with_it\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Can_with_it.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\verma\OneDrive\Desktop\Team OJAS\CourseMCUWS\Can_with_it\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Can_with_it.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Can_with_it.elf Can_with_it.map: $(OBJS) $(USER_OBJS) C:\Users\verma\OneDrive\Desktop\Team\ OJAS\CourseMCUWS\Can_with_it\Pedal-ECU\Can_with_it\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Can_with_it.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\verma\OneDrive\Desktop\Team OJAS\CourseMCUWS\Can_with_it\Pedal-ECU\Can_with_it\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Can_with_it.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
