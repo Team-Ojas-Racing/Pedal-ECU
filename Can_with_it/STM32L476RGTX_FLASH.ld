@@ -175,6 +175,16 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
+  /*Storage for variables in case of power on reset*/
+  ._sram_storage_(NOLOAD):
+  {
+  	. = ALIGN(4);
+  	PROVIDE ( end = . );
+  	PROVIDE ( _end = . );
+  	. = . + 0x10;
+  	. = ALIGN(4);
+  } >RAM
+
   /* Remove information from the compiler libraries */
   /DISCARD/ :
   {

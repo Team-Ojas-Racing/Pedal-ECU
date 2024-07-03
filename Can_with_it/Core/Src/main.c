@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "CAN_driver.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define ADC1 0
+#define ADC2 1
+#define ADC_VREF 2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,15 +58,33 @@ TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint16_t rawValues[2];//array to store values from the adc
-char msg[32];//debugging array for uart
+/***************ADC VARIABLES***************/
+uint32_t rawValues[2];//array to store values from the adc
+uint16_t adcVREF[1];//array for vrefint channel
+uint32_t adcBuffer[3];
+uint16_t vrefint_cal = 0;
+
+
+
+/***************DAC VARIABLES***************/
 uint32_t dac_val;//function to write value to the dac
 uint32_t getDac;//debugging integer for dac
+
+char msg[32];//debugging array for uart
+
+/***************COMMONDATA VARIABLES***************/
+bmsData bmsDataObj = {0};
+
+/***************CAN VARIABLES***************/
+CAN_RxHeaderTypeDef prxheader;
+uint8_t data[8];
+
 
 //Error codes
 char* adcNcalib = "ADC calibration failure!\r\n";
 char* potShortPedal = "Potentiometers have shorted!\r\n";
 char* deviationCheckFail = "Deviation is above 10%!\r\n";
+char* death = "STM die!\r\n";
 
 
 /* USER CODE END PV */
@@ -74,13 +95,20 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_CAN1_Init(void);
-static void MX_DAC1_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_DAC1_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
-uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2);
+uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref);
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	dac_val = dacInput(rawValues[0], rawValues[1]);
+	dac_val = dacInput(rawValues[0], rawValues[1],adcVREF[0]);
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	rawValues[0] = adcBuffer[ADC1];
+	rawValues[1] = adcBuffer[ADC2];
+	adcVREF[0] = adcBuffer[ADC_VREF];
 }
 /* USER CODE END PFP */
 
@@ -97,6 +125,11 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
+
+	prxheader.StdId = 0x65D;
+	prxheader.DLC = 8;
+	prxheader.IDE = CAN_ID_STD;
+	prxheader.RTR = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -120,20 +153,25 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_CAN1_Init();
-  MX_DAC1_Init();
   MX_TIM6_Init();
+  MX_DAC1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED)!=HAL_OK){
-	  HAL_UART_Transmit(&huart2, (uint8_t*)adcNcalib, strlen(adcNcalib), 100);
+	  LOGS(adcNcalib,strlen(adcNcalib));
 	  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   }
 
   uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1, ADC_SINGLE_ENDED);
   sprintf(msg,"%lu",calibrationValue);
-  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+  LOGS(msg,strlen(msg));
 
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)rawValues, 2);
+  HAL_CAN_Start(&hcan1);
+  if(HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING|CAN_IT_RX_FIFO1_MSG_PENDING)!=HAL_OK){
+	  Error_Handler();
+  }
+
+  HAL_ADC_Start_DMA(&hadc1, adcBuffer, 3);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start_IT(&htim6);
 
@@ -143,25 +181,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  dac_val = dacInput(rawValues[0], rawValues[1]);
-//
-//	  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_val);
-//	  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-//
-//	  uint32_t getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
-
 	  sprintf(msg,"adc1 val: %hu\r\n",(uint16_t)rawValues[0]);
-	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+	  LOGS(msg,strlen(msg));
 
 	  sprintf(msg,"adc2 val: %hu\r\n",(uint16_t)rawValues[1]);
-	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+	  LOGS(msg,strlen(msg));
 
 	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
 
 	  sprintf(msg,"dac val: %hu\r\n",(uint16_t)getDac);
-	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+	  LOGS(msg,strlen(msg));
 
-	  HAL_Delay(300);
+	  canTransmit();
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -246,11 +278,11 @@ static void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.NbrOfConversion = 2;
+  hadc1.Init.NbrOfConversion = 3;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
-  hadc1.Init.DMAContinuousRequests = ENABLE;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.OversamplingMode = DISABLE;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -268,7 +300,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Channel = ADC_CHANNEL_VREFINT;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -281,8 +313,16 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_6;
+  sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -310,7 +350,7 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 5;
+  hcan1.Init.Prescaler = 10;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_13TQ;
@@ -341,6 +381,22 @@ static void MX_CAN1_Init(void)
       /* Filter configuration Error */
       Error_Handler();
     }
+
+  sFilterConfig.FilterBank = 1;
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  sFilterConfig.FilterIdHigh = 0x0000;
+  sFilterConfig.FilterIdLow = 0x0000;
+  sFilterConfig.FilterMaskIdHigh = 0x0000;
+  sFilterConfig.FilterMaskIdLow = 0x0000;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
+  sFilterConfig.FilterActivation = ENABLE;
+  sFilterConfig.SlaveStartFilterBank = 14;
+
+    if(HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig) != HAL_OK){
+        /* Filter configuration Error */
+        Error_Handler();
+      }
   /* USER CODE END CAN1_Init 2 */
 
 }
@@ -497,11 +553,21 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -509,15 +575,17 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
+uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref){
 	static uint16_t counter = 0;
 	static uint32_t rawcheck1 = 0;
 	static uint32_t rawcheck2 = 0;
 
+	uint16_t vrefint_cal = *((uint16_t*)VREFINT_CAL_ADDR);
+
 	uint32_t out = 0;
 
-	uint32_t raw1 = adcinput1;
-	uint32_t raw2 = adcinput2*9/8;
+	uint32_t raw1 = (3000*(uint32_t)vrefint_cal*adcinput1)/(vref*4096);
+	uint32_t raw2 = (9/8)*(3000*(uint32_t)vrefint_cal*adcinput2)/(vref*4096);
 
 	uint32_t deviationCheck = abs(raw1-raw2)/100;
 
@@ -538,17 +606,19 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 			//compare to see if they are still the same
 			if(rawcheck1 == raw1 && rawcheck2 == raw2){
 				out = 0;
-				HAL_UART_Transmit(&huart2, (uint8_t*)potShortPedal, strlen(potShortPedal), 100);
+				LOGS(potShortPedal,strlen(potShortPedal));
 			}
 		}
 	}
 	//check deviation
 	else if(deviationCheck>0.1){
 		out = 0;
-		HAL_UART_Transmit(&huart2, (uint8_t*)deviationCheckFail, strlen(deviationCheckFail), 100);
+		LOGS(deviationCheckFail,strlen(deviationCheckFail));
 	}
 	//regular output function(average value)
 	else{
+		raw1 = (raw1)*4096/3300;
+		raw2 = (raw2)*4096/3300;
 		out = ((raw1+raw2)/2);
 	}
 

@@ -1,63 +1,63 @@
 /**
- ******************************************************************************
- * @file    stm32l4xx_hal_i2c_ex.c
- * @author  MCD Application Team
- * @brief   I2C Extended HAL module driver.
- *          This file provides firmware functions to manage the following
- *          functionalities of I2C Extended peripheral:
- *           + Filter Mode Functions
- *           + WakeUp Mode Functions
- *           + FastModePlus Functions
- *
- ******************************************************************************
- * @attention
- *
- * Copyright (c) 2017 STMicroelectronics.
- * All rights reserved.
- *
- * This software is licensed under terms that can be found in the LICENSE file
- * in the root directory of this software component.
- * If no LICENSE file comes with this software, it is provided AS-IS.
- *
- ******************************************************************************
- @verbatim
- ==============================================================================
- ##### I2C peripheral Extended features  #####
- ==============================================================================
+  ******************************************************************************
+  * @file    stm32l4xx_hal_i2c_ex.c
+  * @author  MCD Application Team
+  * @brief   I2C Extended HAL module driver.
+  *          This file provides firmware functions to manage the following
+  *          functionalities of I2C Extended peripheral:
+  *           + Filter Mode Functions
+  *           + WakeUp Mode Functions
+  *           + FastModePlus Functions
+  *
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2017 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  @verbatim
+  ==============================================================================
+               ##### I2C peripheral Extended features  #####
+  ==============================================================================
 
- [..] Comparing to other previous devices, the I2C interface for STM32L4xx
- devices contains the following additional features
+  [..] Comparing to other previous devices, the I2C interface for STM32L4xx
+       devices contains the following additional features
 
- (+) Possibility to disable or enable Analog Noise Filter
- (+) Use of a configured Digital Noise Filter
- (+) Disable or enable wakeup from Stop mode(s)
- (+) Disable or enable Fast Mode Plus
+       (+) Possibility to disable or enable Analog Noise Filter
+       (+) Use of a configured Digital Noise Filter
+       (+) Disable or enable wakeup from Stop mode(s)
+       (+) Disable or enable Fast Mode Plus
 
- ##### How to use this driver #####
- ==============================================================================
- [..] This driver provides functions to configure Noise Filter and Wake Up Feature
- (#) Configure I2C Analog noise filter using the function HAL_I2CEx_ConfigAnalogFilter()
- (#) Configure I2C Digital noise filter using the function HAL_I2CEx_ConfigDigitalFilter()
- (#) Configure the enable or disable of I2C Wake Up Mode using the functions :
- (++) HAL_I2CEx_EnableWakeUp()
- (++) HAL_I2CEx_DisableWakeUp()
- (#) Configure the enable or disable of fast mode plus driving capability using the functions :
- (++) HAL_I2CEx_EnableFastModePlus()
- (++) HAL_I2CEx_DisableFastModePlus()
- @endverbatim
- */
+                     ##### How to use this driver #####
+  ==============================================================================
+  [..] This driver provides functions to configure Noise Filter and Wake Up Feature
+    (#) Configure I2C Analog noise filter using the function HAL_I2CEx_ConfigAnalogFilter()
+    (#) Configure I2C Digital noise filter using the function HAL_I2CEx_ConfigDigitalFilter()
+    (#) Configure the enable or disable of I2C Wake Up Mode using the functions :
+          (++) HAL_I2CEx_EnableWakeUp()
+          (++) HAL_I2CEx_DisableWakeUp()
+    (#) Configure the enable or disable of fast mode plus driving capability using the functions :
+          (++) HAL_I2CEx_EnableFastModePlus()
+          (++) HAL_I2CEx_DisableFastModePlus()
+  @endverbatim
+  */
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32l4xx_hal.h"
 
 /** @addtogroup STM32L4xx_HAL_Driver
- * @{
- */
+  * @{
+  */
 
 /** @defgroup I2CEx I2CEx
- * @brief I2C Extended HAL module driver
- * @{
- */
+  * @brief I2C Extended HAL module driver
+  * @{
+  */
 
 #ifdef HAL_I2C_MODULE_ENABLED
 
@@ -360,9 +360,9 @@ void HAL_I2CEx_DisableFastModePlus(uint32_t ConfigFastModePlus)
 
 #endif /* HAL_I2C_MODULE_ENABLED */
 /**
- * @}
- */
+  * @}
+  */
 
 /**
- * @}
- */
+  * @}
+  */
