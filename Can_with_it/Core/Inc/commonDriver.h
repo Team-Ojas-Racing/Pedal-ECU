@@ -13,7 +13,7 @@
 
 extern UART_HandleTypeDef huart2;
 
-#define 				LOGS(x,y)			HAL_UART_Transmit(&huart2, x, y, 1000)
+#define 				LOGS(x,y)			HAL_UART_Transmit(&huart2, x, y, 100)
 
 typedef struct{
 	uint8_t flag;

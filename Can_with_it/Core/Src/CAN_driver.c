@@ -11,16 +11,24 @@ extern CAN_HandleTypeDef hcan1;
 
 extern bmsData bmsDataObj;
 
-char* rxFailure = "NO data received through can!\t\n";
+char* rxFailure = "NO data received through can!\r\n";
+char* canActivationFault = "CAN not activated!\r\n";
 
-uint8_t canNotification(uint8_t state){
-	if(state){
-		HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING|CAN_IT_RX_FIFO1_MSG_PENDING);
+uint8_t canNotification(){
+	uint8_t state = 0;
+
+	if (HAL_CAN_ActivateNotification(&hcan1,CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK) {
+		Error_Handler();
+		LOGS(canActivationFault, strlen(canActivationFault));
+		state = 1;
+	} else {
+		state = 0;
 	}
+
 	return state;
 }
 
-char canTransmit(){
+void canTransmit(uint8_t *data){
 	CAN_TxHeaderTypeDef txHeader;
 	txHeader.DLC = 8;
 	txHeader.StdId = 0x65D;
@@ -28,15 +36,16 @@ char canTransmit(){
 	txHeader.TransmitGlobalTime = DISABLE;
 	txHeader.RTR = CAN_RTR_DATA;
 
-	int txData[] = {1,2,3,4,5,6,7,8};
-
 	uint32_t pTxMailbox;
 
-	if(HAL_CAN_AddTxMessage(&hcan1, &txHeader, txData, &pTxMailbox)!=HAL_OK){
+	if(HAL_CAN_AddTxMessage(&hcan1, &txHeader, data, &pTxMailbox)!=HAL_OK){
 		Error_Handler();
 	}
+	else{
+		char *check = "msg sent\r\n";
+		LOGS(check,strlen(check));
+	}
 
-	LOGS("msg sent\r\n",10);
 
 }
 

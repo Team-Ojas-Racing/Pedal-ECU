@@ -34,9 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ADC1 0
-#define ADC2 1
-#define ADC_VREF 2
+#define ADC1IN5 1
+#define ADC1IN6 2
+#define ADC_VREF 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -60,11 +60,8 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 /***************ADC VARIABLES***************/
 uint32_t rawValues[2];//array to store values from the adc
-uint16_t adcVREF[1];//array for vrefint channel
-uint32_t adcBuffer[3];
+uint16_t adcVREF;//array for vrefint channel
 uint16_t vrefint_cal = 0;
-
-
 
 /***************DAC VARIABLES***************/
 uint32_t dac_val;//function to write value to the dac
@@ -76,9 +73,7 @@ char msg[32];//debugging array for uart
 bmsData bmsDataObj = {0};
 
 /***************CAN VARIABLES***************/
-CAN_RxHeaderTypeDef prxheader;
 uint8_t data[8];
-
 
 //Error codes
 char* adcNcalib = "ADC calibration failure!\r\n";
@@ -99,16 +94,17 @@ static void MX_TIM6_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
-uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref);
+uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2);
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	dac_val = dacInput(rawValues[0], rawValues[1],adcVREF[0]);
+	dac_val = dacInput(rawValues[0], rawValues[1]);
 }
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
-	rawValues[0] = adcBuffer[ADC1];
-	rawValues[1] = adcBuffer[ADC2];
-	adcVREF[0] = adcBuffer[ADC_VREF];
+void ErrorLedBlink(){
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+	HAL_Delay(500);
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+	HAL_Delay(500);
 }
 /* USER CODE END PFP */
 
@@ -154,19 +150,20 @@ int main(void)
   /* USER CODE BEGIN 2 */
   if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED)!=HAL_OK){
 	  LOGS(adcNcalib,strlen(adcNcalib));
+	  ErrorLedBlink();
 	  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   }
 
   uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1, ADC_SINGLE_ENDED);
-  sprintf(msg,"%lu",calibrationValue);
+  sprintf(msg,"%lu\r\n",calibrationValue);
   LOGS(msg,strlen(msg));
 
   HAL_CAN_Start(&hcan1);
-  if(HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING|CAN_IT_RX_FIFO1_MSG_PENDING)!=HAL_OK){
+  if(canNotification()!=0){
 	  Error_Handler();
   }
 
-  HAL_ADC_Start_DMA(&hadc1, adcBuffer, 3);
+  HAL_ADC_Start_DMA(&hadc1, rawValues, 2);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start_IT(&htim6);
 
@@ -176,10 +173,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  sprintf(msg,"adc1 val: %hu\r\n",(uint16_t)rawValues[0]);
-	  LOGS(msg,strlen(msg));
-
-	  sprintf(msg,"adc2 val: %hu\r\n",(uint16_t)rawValues[1]);
+	  sprintf(msg,"adc1 val: %hu\r\nadc2 val: %hu\r\n",(uint16_t)rawValues[0],(uint16_t)rawValues[1]);
 	  LOGS(msg,strlen(msg));
 
 	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
@@ -187,7 +181,6 @@ int main(void)
 	  sprintf(msg,"dac val: %hu\r\n",(uint16_t)getDac);
 	  LOGS(msg,strlen(msg));
 
-	  canTransmit();
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
@@ -273,10 +266,10 @@ static void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.NbrOfConversion = 3;
+  hadc1.Init.NbrOfConversion = 2;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;
-  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
   hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.OversamplingMode = DISABLE;
@@ -295,7 +288,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_VREFINT;
+  sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -308,16 +301,8 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Channel = ADC_CHANNEL_6;
   sConfig.Rank = ADC_REGULAR_RANK_2;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -549,7 +534,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -557,12 +542,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  /*Configure GPIO pin : LD2_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -570,17 +555,67 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref){
+//uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref){
+//	static uint16_t counter = 0;
+//	static uint32_t rawcheck1 = 0;
+//	static uint32_t rawcheck2 = 0;
+//
+//	uint16_t vrefint_cal = *((uint16_t*)VREFINT_CAL_ADDR);
+//
+//	uint32_t out = 0;
+//
+//	uint32_t raw1 = (3000*(uint32_t)vrefint_cal*adcinput1)/(vref*4096);
+//	uint32_t raw2 = (9/8)*(3000*(uint32_t)vrefint_cal*adcinput2)/(vref*4096);
+//
+//	uint32_t deviationCheck = abs(raw1-raw2)/100;
+//
+//	//check if both values are same for 1 second
+//	if((raw1!=0) && (raw2!=0) && raw1 == raw2){
+//		//check if raw1 is continuously the same
+//		if((raw1 != rawcheck1) && (raw2 != rawcheck2)){
+//			counter = 0;
+//		}
+//		//set static value to be compared later
+//		rawcheck1 = raw1;
+//		rawcheck2 = raw2;
+//
+//		counter++;
+//
+//		if(counter > 999){
+//			counter = 0;
+//			//compare to see if they are still the same
+//			if(rawcheck1 == raw1 && rawcheck2 == raw2){
+//				out = 0;
+//				LOGS(potShortPedal,strlen(potShortPedal));
+//				Error_Handler();
+//			}
+//		}
+//	}
+//	//check deviation
+//	else if(deviationCheck>0.1){
+//		out = 0;
+//		LOGS(deviationCheckFail,strlen(deviationCheckFail));
+//		Error_Handler();
+//	}
+//	//regular output function(average value)
+//	else{
+//		raw1 = (raw1)*4096/3300;
+//		raw2 = (raw2)*4096/3300;
+//		out = ((raw1+raw2)/2);
+//	}
+//
+//	return out;
+//}
+
+uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 	static uint16_t counter = 0;
 	static uint32_t rawcheck1 = 0;
 	static uint32_t rawcheck2 = 0;
 
-	uint16_t vrefint_cal = *((uint16_t*)VREFINT_CAL_ADDR);
-
 	uint32_t out = 0;
 
-	uint32_t raw1 = (3000*(uint32_t)vrefint_cal*adcinput1)/(vref*4096);
-	uint32_t raw2 = (9/8)*(3000*(uint32_t)vrefint_cal*adcinput2)/(vref*4096);
+	uint32_t raw1 = adcinput1;
+	uint32_t raw2 = (9/8)*adcinput2;
 
 	uint32_t deviationCheck = abs(raw1-raw2)/100;
 
@@ -602,6 +637,7 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref){
 			if(rawcheck1 == raw1 && rawcheck2 == raw2){
 				out = 0;
 				LOGS(potShortPedal,strlen(potShortPedal));
+				Error_Handler();
 			}
 		}
 	}
@@ -609,11 +645,10 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2, uint16_t vref){
 	else if(deviationCheck>0.1){
 		out = 0;
 		LOGS(deviationCheckFail,strlen(deviationCheckFail));
+		Error_Handler();
 	}
 	//regular output function(average value)
 	else{
-		raw1 = (raw1)*4096/3300;
-		raw2 = (raw2)*4096/3300;
 		out = ((raw1+raw2)/2);
 	}
 
@@ -635,10 +670,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-	  HAL_Delay(500);
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-	  HAL_Delay(500);
+	  ErrorLedBlink();
   }
   /* USER CODE END Error_Handler_Debug */
 }

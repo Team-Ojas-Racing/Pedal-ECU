@@ -20,8 +20,8 @@ typedef struct{
 }canData;
 
 //void canSelectBaudRate(uin32_t baudrate);
-uint8_t canNotification(uint8_t state);
-char canTransmit();
+uint8_t canNotification();
+void canTransmit(uint8_t *data);
 void canReceive(canData *data);
 void processCanMsg(canData *data);
 uint8_t getNodes();
