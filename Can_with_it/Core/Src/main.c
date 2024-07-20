@@ -21,10 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "CAN_driver.h"
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,9 +31,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ADC1IN5 1
-#define ADC1IN6 2
-#define ADC_VREF 0
+#define ADC1IN5 0
+#define ADC1IN6 1
+#define BRAKEPRESSURE 2
+//#define ADC_VREF 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -60,27 +58,31 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 /***************ADC VARIABLES***************/
 uint32_t rawValues[2];//array to store values from the adc
-uint16_t adcVREF;//array for vrefint channel
-uint16_t vrefint_cal = 0;
+uint16_t adcVREF;//variable for vrefint channel
+uint32_t adcBuffer[2];//buffer for adcinput
+uint16_t brakePressure;
 
 /***************DAC VARIABLES***************/
 uint32_t dac_val;//function to write value to the dac
 uint32_t getDac;//debugging integer for dac
 
-char msg[32];//debugging array for uart
-
 /***************COMMONDATA VARIABLES***************/
 bmsData bmsDataObj = {0};
 
 /***************CAN VARIABLES***************/
-uint8_t data[8];
+uint16_t data[8];
 
-//Error codes
+/***************ERROR CODES***************/
 char* adcNcalib = "ADC calibration failure!\r\n";
 char* potShortPedal = "Potentiometers have shorted!\r\n";
 char* deviationCheckFail = "Deviation is above 10%!\r\n";
 char* death = "STM die!\r\n";
 
+/***************DATALOGGING***************/
+char msg[100];//debugging array for uart
+
+/***************FLAGS***************/
+uint8_t runON = 0;
 
 /* USER CODE END PV */
 
@@ -98,6 +100,18 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2);
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	dac_val = dacInput(rawValues[0], rawValues[1]);
+
+	if(brakePressure > 600){
+		HAL_GPIO_WritePin(BrakeLight_GPIO_Port, BrakeLight_Pin, GPIO_PIN_SET);
+	}else{
+		HAL_GPIO_WritePin(BrakeLight_GPIO_Port, BrakeLight_Pin, GPIO_PIN_RESET);
+	}
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	rawValues[0] = adcBuffer[ADC1IN5];
+	rawValues[1] = adcBuffer[ADC1IN6];
+	brakePressure = adcBuffer[BRAKEPRESSURE];
 }
 
 void ErrorLedBlink(){
@@ -106,6 +120,23 @@ void ErrorLedBlink(){
 	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 	HAL_Delay(500);
 }
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(RUNON_Pin){
+		runON = 1;
+	}
+//	else if(B1_Pin){
+//
+//	}
+
+	//for future interrupts
+//	else{
+//
+//	}
+}
+
+
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -148,22 +179,24 @@ int main(void)
   MX_DAC1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_SetValue(&hadc1, ADC_SINGLE_ENDED, calibrationValue);
+
+  uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1,ADC_SINGLE_ENDED);
+  sprintf(msg, "%lu\r\n", calibrationValue);
+  LOGS((uint8_t* )msg, strlen(msg));
+
   if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED)!=HAL_OK){
-	  LOGS(adcNcalib,strlen(adcNcalib));
+	  LOGS((uint8_t*)adcNcalib,strlen(adcNcalib));
 	  ErrorLedBlink();
 	  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   }
-
-  uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1, ADC_SINGLE_ENDED);
-  sprintf(msg,"%lu\r\n",calibrationValue);
-  LOGS(msg,strlen(msg));
 
   HAL_CAN_Start(&hcan1);
   if(canNotification()!=0){
 	  Error_Handler();
   }
 
-  HAL_ADC_Start_DMA(&hadc1, rawValues, 2);
+  HAL_ADC_Start_DMA(&hadc1, adcBuffer, 2);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start_IT(&htim6);
 
@@ -173,13 +206,22 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  sprintf(msg,"adc1 val: %hu\r\nadc2 val: %hu\r\n",(uint16_t)rawValues[0],(uint16_t)rawValues[1]);
-	  LOGS(msg,strlen(msg));
+//	  canTransmit(test);
+	  sprintf(msg,"adc1 val: %hu\r\nadc2 val: %hu\r\ndac val: %hu\r\n",(uint16_t)rawValues[0],(uint16_t)rawValues[1],(uint16_t)HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1));
+	  LOGS((uint8_t*)msg,strlen(msg));
+//
+//	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
 
-	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
+//	  sprintf(msg,"99 %hu\n",(uint16_t)getDac);
 
-	  sprintf(msg,"dac val: %hu\r\n",(uint16_t)getDac);
-	  LOGS(msg,strlen(msg));
+//	  LOGS((uint8_t*)msg,strlen(msg));
+
+	  if(runON==1){
+		  HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+		  runON = 0;
+	  }else{
+		  HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+	  }
 
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
@@ -266,7 +308,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.NbrOfConversion = 2;
+  hadc1.Init.NbrOfConversion = 3;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
@@ -303,6 +345,15 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_6;
   sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -536,6 +587,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SD_O_GPIO_Port, SD_O_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, BUZZER_Pin|BrakeLight_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -548,6 +605,30 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SD_O_Pin */
+  GPIO_InitStruct.Pin = SD_O_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SD_O_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : RUNON_Pin */
+  GPIO_InitStruct.Pin = RUNON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(RUNON_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : BUZZER_Pin BrakeLight_Pin */
+  GPIO_InitStruct.Pin = BUZZER_Pin|BrakeLight_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -564,10 +645,19 @@ static void MX_GPIO_Init(void)
 //
 //	uint32_t out = 0;
 //
-//	uint32_t raw1 = (3000*(uint32_t)vrefint_cal*adcinput1)/(vref*4096);
-//	uint32_t raw2 = (9/8)*(3000*(uint32_t)vrefint_cal*adcinput2)/(vref*4096);
+//	uint16_t vrefInt;
+//	if (vref == 0){
+//		vrefInt = 4096;
+//	}else{
+//		vrefInt = vref;
+//	}
 //
-//	uint32_t deviationCheck = abs(raw1-raw2)/100;
+//	uint32_t raw1 = (3000*(uint32_t)vrefint_cal*adcinput1)/(vrefInt*4096);
+//	uint32_t raw2 = (9/8)*(3000*(uint32_t)vrefint_cal*adcinput2)/(vrefInt*4096);
+//
+//	uint32_t deviationCheck = (abs(raw1-raw2)/4095)*100;
+//
+//	data[2] = deviationCheck;
 //
 //	//check if both values are same for 1 second
 //	if((raw1!=0) && (raw2!=0) && raw1 == raw2){
@@ -587,15 +677,15 @@ static void MX_GPIO_Init(void)
 //			if(rawcheck1 == raw1 && rawcheck2 == raw2){
 //				out = 0;
 //				LOGS(potShortPedal,strlen(potShortPedal));
-//				Error_Handler();
+////				Error_Handler();
 //			}
 //		}
 //	}
 //	//check deviation
 //	else if(deviationCheck>0.1){
 //		out = 0;
-//		LOGS(deviationCheckFail,strlen(deviationCheckFail));
-//		Error_Handler();
+////		LOGS(deviationCheckFail,strlen(deviationCheckFail));
+////		Error_Handler();
 //	}
 //	//regular output function(average value)
 //	else{
@@ -603,6 +693,9 @@ static void MX_GPIO_Init(void)
 //		raw2 = (raw2)*4096/3300;
 //		out = ((raw1+raw2)/2);
 //	}
+//
+//	data[0] = raw1;
+//	data[1] = raw2;
 //
 //	return out;
 //}
@@ -617,7 +710,9 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 	uint32_t raw1 = adcinput1;
 	uint32_t raw2 = (9/8)*adcinput2;
 
-	uint32_t deviationCheck = abs(raw1-raw2)/100;
+	uint8_t deviationCheck = ((abs((float)raw1-(float)raw2)/4095.00))*100;
+
+	data[2] = (uint16_t)deviationCheck;
 
 	//check if both values are same for 1 second
 	if((raw1!=0) && (raw2!=0) && raw1 == raw2){
@@ -632,20 +727,22 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 		counter++;
 
 		if(counter > 999){
-			counter = 0;
 			//compare to see if they are still the same
 			if(rawcheck1 == raw1 && rawcheck2 == raw2){
 				out = 0;
-				LOGS(potShortPedal,strlen(potShortPedal));
-				Error_Handler();
+//				LOGS((uint8_t*)potShortPedal,strlen(potShortPedal));
+//				Error_Handler();
 			}
+
+			counter = 0;
 		}
 	}
 	//check deviation
-	else if(deviationCheck>0.1){
+	else if(deviationCheck>10){
+		HAL_GPIO_WritePin(SD_O_GPIO_Port, SD_O_Pin, GPIO_PIN_SET);
 		out = 0;
-		LOGS(deviationCheckFail,strlen(deviationCheckFail));
-		Error_Handler();
+//		LOGS((uint8_t*)deviationCheckFail,strlen(deviationCheckFail));
+//		Error_Handler();
 	}
 	//regular output function(average value)
 	else{
@@ -653,6 +750,9 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 	}
 
 	return out;
+
+	data[0] = raw1;
+	data[1] = raw2;
 }
 
 

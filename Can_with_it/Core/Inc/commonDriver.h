@@ -13,14 +13,15 @@
 
 extern UART_HandleTypeDef huart2;
 
-#define 				LOGS(x,y)			HAL_UART_Transmit(&huart2, x, y, 100)
+#define 				LOGS(x,y)			HAL_UART_Transmit(&huart2, x, y, 500)
 
 typedef struct{
 	uint8_t flag;
 }sramLoad;
 
 typedef struct{
-	uint8_t soc;
+	uint32_t garbage;
+	uint16_t soc;
 }bmsData;
 
 #endif /* INC_COMMONDRIVER_H_ */

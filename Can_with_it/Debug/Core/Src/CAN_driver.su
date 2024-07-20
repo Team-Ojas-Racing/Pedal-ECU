@@ -1,5 +1,6 @@
-../Core/Src/CAN_driver.c:17:9:canNotification	24	static
-../Core/Src/CAN_driver.c:31:6:canTransmit	48	static
-../Core/Src/CAN_driver.c:52:6:HAL_CAN_RxFifo0MsgPendingCallback	72	static
-../Core/Src/CAN_driver.c:75:6:HAL_CAN_RxFifo1MsgPendingCallback	72	static
-../Core/Src/CAN_driver.c:98:6:processCanMsg	32	static
+../Core/Src/CAN_driver.c:19:9:canNotification	24	static
+../Core/Src/CAN_driver.c:32:6:canTransmit	72	static
+../Core/Src/CAN_driver.c:63:6:HAL_CAN_RxFifo0MsgPendingCallback	104	static
+../Core/Src/CAN_driver.c:96:6:HAL_CAN_RxFifo1MsgPendingCallback	104	static
+../Core/Src/CAN_driver.c:128:10:byteToDecimal	24	static
+../Core/Src/CAN_driver.c:138:6:processCanMsg	56	static

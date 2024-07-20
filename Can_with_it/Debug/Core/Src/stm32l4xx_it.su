@@ -14,4 +14,5 @@
 ../Core/Src/stm32l4xx_it.c:264:6:CAN1_RX1_IRQHandler	8	static
 ../Core/Src/stm32l4xx_it.c:278:6:CAN1_SCE_IRQHandler	8	static
 ../Core/Src/stm32l4xx_it.c:292:6:USART2_IRQHandler	8	static
-../Core/Src/stm32l4xx_it.c:306:6:TIM6_DAC_IRQHandler	8	static
+../Core/Src/stm32l4xx_it.c:306:6:EXTI15_10_IRQHandler	8	static
+../Core/Src/stm32l4xx_it.c:320:6:TIM6_DAC_IRQHandler	8	static
