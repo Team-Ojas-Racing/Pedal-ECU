@@ -14,6 +14,7 @@
 - [x] Functions for CAN communication:
   - [x] Receive messages from BMS and motor controller
   - [x] Decode message and send to driver interface using UART
+  - [ ] Add error handlers for CAN in order to avoid transmission mailbox fill errors(Bus full, no ack, arbitration failure)
 
 - [ ] Receive the data serial (UART) data from Pedal ECU:
   - [ ] Convert to the required format
