@@ -55,9 +55,10 @@ void canTransmit(uint8_t choice){
 		LOGS((uint8_t*)msg,strlen(msg));
 	}
 
-	uint8_t data1[3] = {MC_RX_ADDR,TORQUE_COMMAND,commonDataObj.torqueHigh,commonDataObj.torqueLow};
-	uint8_t data2[3] = {MC_RX_ADDR,MC_READ,SPEED_ACTUAL,0x00};
-	uint8_t data3[3] = {MC_RX_ADDR,MC_READ,SPEED_RPMMAX_INT,0x00};
+
+	uint8_t data1[3] = {TORQUE_COMMAND,commonDataObj.torqueLow,commonDataObj.torqueHigh};
+	uint8_t data2[3] = {MC_READ,SPEED_ACTUAL,0x00};
+	uint8_t data3[3] = {MC_READ,SPEED_RPMMAX_INT,0x00};
 
 	if ((HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX0) && HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX1) && HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX2)) == 0) {
 		uint32_t mailBox;
@@ -154,6 +155,16 @@ uint16_t getPv(uint8_t *arr) {
     return hex_number;
 }
 
+uint16_t getMcCAN(uint8_t *arr) {
+    // Assuming len is the length of the array arr
+    uint16_t hex_number = 0;
+
+    // Combine first two bytes into a 16-bit hexadecimal number
+    hex_number = (arr[2] << 8) | arr[1];
+
+    return hex_number;
+}
+
 uint16_t getPower(uint8_t *arr) {
     // Assuming len is the length of the array arr
     uint16_t hex_number = 0;
@@ -193,7 +204,18 @@ void processCanMsg(canData *data){
 		LOGS((uint8_t*)id,strlen(id));
 	}
 	else if(data->ID == 0x181){
-
+		if(data->data[0]==SPEED_RPMMAX_INT){
+			uint16_t rpm = getMcCAN(data);
+			char rpmDI[32];
+			sprintf(rpmDI,"%d",rpm);
+			LOGS(rpmDI,strlen(rpmDI));
+		}
+		else if(data->data[0]==SPEED_ACTUAL){
+			uint16_t speed = getMcCAN(data);
+			char speedActualDI[32];
+			sprintf(speedActualDI,"%d",speed);
+			LOGS(speedActualDI,strlen(speedActualDI));
+		}
 	}
 }
 
