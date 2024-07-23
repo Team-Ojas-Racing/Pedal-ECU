@@ -10,6 +10,15 @@
 extern CAN_HandleTypeDef hcan1;
 
 extern bmsData bmsDataObj;
+extern commonData commonDataObj;
+
+//macros for can requests from motor controller
+#define SPEED_ACTUAL 		0x30
+#define SPEED_RPMMAX_INT 	0xCE
+#define TORQUE_COMMAND      0x90
+#define MC_READ 				0x3D
+#define MC_RX_ADDR			0x201
+#define MC_TX_ADDR			0x181
 
 char* txFailure = "No data sent through can!\r\n";
 char* rxFailure = "NO data received through can!\r\n";
@@ -29,10 +38,10 @@ uint8_t canNotification(){
 	return state;
 }
 
-void canTransmit(uint8_t *data){
+void canTransmit(uint8_t choice){
 	CAN_TxHeaderTypeDef txHeader;
-	txHeader.DLC = 8;
-	txHeader.StdId = 0x65D;
+	txHeader.DLC = 3;
+	txHeader.StdId = 0x201;
 	txHeader.IDE = CAN_ID_STD;
 	txHeader.TransmitGlobalTime = DISABLE;
 	txHeader.RTR = CAN_RTR_DATA;
@@ -46,20 +55,36 @@ void canTransmit(uint8_t *data){
 		LOGS((uint8_t*)msg,strlen(msg));
 	}
 
+	uint8_t data1[3] = {MC_RX_ADDR,TORQUE_COMMAND,commonDataObj.torqueHigh,commonDataObj.torqueLow};
+	uint8_t data2[3] = {MC_RX_ADDR,MC_READ,SPEED_ACTUAL,0x00};
+	uint8_t data3[3] = {MC_RX_ADDR,MC_READ,SPEED_RPMMAX_INT,0x00};
+
 	if ((HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX0) && HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX1) && HAL_CAN_IsTxMessagePending(&hcan1, CAN_TX_MAILBOX2)) == 0) {
 		uint32_t mailBox;
 		counter++;
-		char state = HAL_CAN_AddTxMessage(&hcan1, &txHeader, data,&mailBox);
-		if (state != HAL_OK) {
+		char state1 = HAL_CAN_AddTxMessage(&hcan1,&txHeader,data1,&mailBox);
+		if (state1 != HAL_OK) {
 			LOGS((uint8_t*)txFailure,strlen(txFailure));
 //			Error_Handler();
+		}
+
+		char state2 = HAL_CAN_AddTxMessage(&hcan1,&txHeader,data2,&mailBox);
+		if (state2 != HAL_OK) {
+			LOGS((uint8_t*)txFailure,strlen(txFailure));
+		//	Error_Handler();
+		}
+
+		char state3 = HAL_CAN_AddTxMessage(&hcan1,&txHeader,data3,&mailBox);
+		if (state3 != HAL_OK) {
+			LOGS((uint8_t*)txFailure,strlen(txFailure));
+		//	Error_Handler();
 		}
 	}
 	else {
 		LOGS((uint8_t*)"CBSY\n", 5);
 	}
 }
-
+//this is used for bms
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
 	CAN_RxHeaderTypeDef rxHeader;
 
@@ -92,40 +117,34 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
 		return;
 	}
 }
-
+//this is used for motor controller
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
 	CAN_RxHeaderTypeDef rxHeader;
 
 	canData data[] = {0};
 
-	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rxHeader, data->data) != HAL_OK){
+	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &rxHeader, data->data) != HAL_OK){
 		LOGS((uint8_t*)rxFailure,strlen(rxFailure));
 	}
-	if (rxHeader.ExtId == 0x1806E5F4) {
-		data->ID = rxHeader.ExtId;
-		data->IDE = CAN_ID_EXT;
-	} else if (rxHeader.ExtId == 0x1806E9F4) {
-		data->ID = rxHeader.ExtId;
-		data->IDE = CAN_ID_EXT;
-	} else if (rxHeader.ExtId == 0x1806E7F4) {
-		data->ID = rxHeader.ExtId;
-		data->IDE = CAN_ID_EXT;
+	if(rxHeader.StdId == 0x181){
+		data->ID = rxHeader.StdId;
+		data->IDE = CAN_ID_STD;
 	} else {
 		char msg[32];
-		sprintf(msg, "%lu\r\n", rxHeader.ExtId);
+		sprintf(msg, "%lu\r\n", rxHeader.StdId);
 		LOGS((uint8_t*)msg, strlen(msg));
 	}
 	data->DLC = rxHeader.DLC;
 	data->Fifo = 0;
 
 	processCanMsg(data);
-	uint8_t fill1 = HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0);
+	uint8_t fill1 = HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO1);
 	if(fill1 == 0){
 		return;
 	}
 }
 
-uint16_t byteToDecimal(uint8_t *arr) {
+uint16_t getPv(uint8_t *arr) {
     // Assuming len is the length of the array arr
     uint16_t hex_number = 0;
 
@@ -135,24 +154,46 @@ uint16_t byteToDecimal(uint8_t *arr) {
     return hex_number;
 }
 
+uint16_t getPower(uint8_t *arr) {
+    // Assuming len is the length of the array arr
+    uint16_t hex_number = 0;
+
+    // Combine first two bytes into a 16-bit hexadecimal number
+    hex_number = (arr[2] << 8) | arr[3];
+
+    return hex_number;
+}
+
+uint16_t getAverageTemp(uint8_t *arr) {
+    // Assuming len is the length of the array arr
+    uint16_t hex_number = 0;
+
+    // Combine first two bytes into a 16-bit hexadecimal number
+    hex_number = (arr[4] << 8);
+
+    return hex_number;
+}
+
 void processCanMsg(canData *data){
 	if(data->ID == 0x1806E5F4){
-		char msg[32];
-		bmsDataObj.soc = byteToDecimal(data->data);
-		sprintf(msg,"%d.%d",bmsDataObj.soc/10,bmsDataObj.soc%10);
-		LOGS((uint8_t*)msg,strlen(msg));
+		char *id = "0x1806E5F4!\r\n";
+		LOGS((uint8_t*)id,strlen(id));
 	}
 	else if(data->ID == 0x1806E7F4){
-		char msg[32];
-		bmsDataObj.soc = byteToDecimal(data->data);
-		sprintf(msg,"%d.%d",bmsDataObj.soc/10,bmsDataObj.soc%10);
+		char msg[100];
+		bmsDataObj.pv = getPv(data->data);
+		bmsDataObj.kwPower = getPower(data->data);
+		bmsDataObj.relayState = data->data[4];
+		bmsDataObj.soc = data->data[5];
+		sprintf(msg,"pv:%d.%d\r\nkwpwr:%d.%d\r\nrelayState:%d\r\nsoc:%d\r\n",bmsDataObj.pv/10,bmsDataObj.pv%10, bmsDataObj.kwPower/10,bmsDataObj.kwPower%10,bmsDataObj.relayState,bmsDataObj.soc);
 		LOGS((uint8_t*)msg,strlen(msg));
 	}
 	else if (data->ID == 0x1806E9F4) {
-		char msg[32];
-		bmsDataObj.soc = byteToDecimal(data->data);
-		sprintf(msg, "%d.%d\n", bmsDataObj.soc / 10, bmsDataObj.soc % 10);
-		LOGS((uint8_t*)msg, strlen(msg));
+		char *id = "0x1806E9F4!\r\n";
+		LOGS((uint8_t*)id,strlen(id));
+	}
+	else if(data->ID == 0x181){
+
 	}
 }
 

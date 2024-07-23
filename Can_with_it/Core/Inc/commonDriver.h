@@ -21,7 +21,15 @@ typedef struct{
 
 typedef struct{
 	uint32_t garbage;
-	uint16_t soc;
+	uint8_t soc;
+	uint16_t pv;
+	uint16_t kwPower;
+	uint8_t relayState;
 }bmsData;
+
+typedef struct{
+	uint8_t torqueHigh;
+	uint8_t torqueLow;
+}commonData;
 
 #endif /* INC_COMMONDRIVER_H_ */

@@ -59,8 +59,8 @@ UART_HandleTypeDef huart2;
 /***************ADC VARIABLES***************/
 uint32_t rawValues[2];//array to store values from the adc
 uint16_t adcVREF;//variable for vrefint channel
-uint32_t adcBuffer[2];//buffer for adcinput
-uint16_t brakePressure;
+uint32_t adcBuffer[3];//buffer for adcinput
+uint32_t brakePressure;
 
 /***************DAC VARIABLES***************/
 uint32_t dac_val;//function to write value to the dac
@@ -68,6 +68,7 @@ uint32_t getDac;//debugging integer for dac
 
 /***************COMMONDATA VARIABLES***************/
 bmsData bmsDataObj = {0};
+commonData commonDataObj = {0};
 
 /***************CAN VARIABLES***************/
 uint16_t data[8];
@@ -101,7 +102,7 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	dac_val = dacInput(rawValues[0], rawValues[1]);
 
-	if(brakePressure > 600){
+	if(brakePressure > 800){
 		HAL_GPIO_WritePin(BrakeLight_GPIO_Port, BrakeLight_Pin, GPIO_PIN_SET);
 	}else{
 		HAL_GPIO_WritePin(BrakeLight_GPIO_Port, BrakeLight_Pin, GPIO_PIN_RESET);
@@ -179,11 +180,11 @@ int main(void)
   MX_DAC1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADCEx_Calibration_SetValue(&hadc1, ADC_SINGLE_ENDED, calibrationValue);
-
   uint32_t calibrationValue = HAL_ADCEx_Calibration_GetValue(&hadc1,ADC_SINGLE_ENDED);
   sprintf(msg, "%lu\r\n", calibrationValue);
   LOGS((uint8_t* )msg, strlen(msg));
+
+  HAL_ADCEx_Calibration_SetValue(&hadc1, ADC_SINGLE_ENDED, calibrationValue);
 
   if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED)!=HAL_OK){
 	  LOGS((uint8_t*)adcNcalib,strlen(adcNcalib));
@@ -193,10 +194,12 @@ int main(void)
 
   HAL_CAN_Start(&hcan1);
   if(canNotification()!=0){
-	  Error_Handler();
+
   }
 
-  HAL_ADC_Start_DMA(&hadc1, adcBuffer, 2);
+  uint8_t test[] = {0x0f,0x93,0,0,0,0,0,0};
+
+  HAL_ADC_Start_DMA(&hadc1, adcBuffer, 3);
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, &dac_val, 1, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start_IT(&htim6);
 
@@ -206,10 +209,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  canTransmit(test);
-	  sprintf(msg,"adc1 val: %hu\r\nadc2 val: %hu\r\ndac val: %hu\r\n",(uint16_t)rawValues[0],(uint16_t)rawValues[1],(uint16_t)HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1));
-	  LOGS((uint8_t*)msg,strlen(msg));
+	  canTransmit(test);
+//	  sprintf(msg,"adc1 val: %hu\r\nadc2 val: %hu\r\ndac val: %hu\r\n",(uint16_t)rawValues[0],(uint16_t)rawValues[1],(uint16_t)HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1));
+//	  LOGS((uint8_t*)msg,strlen(msg));
 //
+//	  sprintf(msg,"deviation: %hu\r\n",data[2]);
+//	  LOGS((uint8_t*)msg,strlen(msg));
+//
+//	  sprintf(msg,"%hu %hu\r\n",data[0],data[1]);
+//	  LOGS((uint8_t*)msg,strlen(msg));
+//
+//	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
+//	  sprintf(msg,"dac:%lu\r\n",getDac);
+//	  LOGS((uint8_t*)msg,strlen(msg));
 //	  getDac = HAL_DAC_GetValue(&hdac1, DAC_CHANNEL_1);
 
 //	  sprintf(msg,"99 %hu\n",(uint16_t)getDac);
@@ -707,17 +719,20 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 
 	uint32_t out = 0;
 
-	uint32_t raw1 = adcinput1;
-	uint32_t raw2 = (9/8)*adcinput2;
+	uint32_t raw1 = 0.72*((1.208)*adcinput1)+748;
+	uint32_t raw2 = adcinput2;
 
-	uint8_t deviationCheck = ((abs((float)raw1-(float)raw2)/4095.00))*100;
+	data[0] = raw1;
+	data[1] = raw2;
 
-	data[2] = (uint16_t)deviationCheck;
+	uint8_t deviationCheck = ((abs((float) raw1 - (float) raw2) / 4095.00))* 100;
+
+	data[2] = (uint16_t) deviationCheck;
 
 	//check if both values are same for 1 second
-	if((raw1!=0) && (raw2!=0) && raw1 == raw2){
+	if ((raw1 != 0) && (raw2 != 0) && raw1 == raw2) {
 		//check if raw1 is continuously the same
-		if((raw1 != rawcheck1) && (raw2 != rawcheck2)){
+		if ((raw1 != rawcheck1) && (raw2 != rawcheck2)) {
 			counter = 0;
 		}
 		//set static value to be compared later
@@ -726,33 +741,34 @@ uint32_t dacInput(uint16_t adcinput1, uint16_t adcinput2){
 
 		counter++;
 
-		if(counter > 999){
-			//compare to see if they are still the same
-			if(rawcheck1 == raw1 && rawcheck2 == raw2){
+		if (counter > 999) {
+		//compare to see if they are still the same
+			if (rawcheck1 == raw1 && rawcheck2 == raw2) {
 				out = 0;
-//				LOGS((uint8_t*)potShortPedal,strlen(potShortPedal));
-//				Error_Handler();
+				//LOGS((uint8_t*)potShortPedal,strlen(potShortPedal));
+				//Error_Handler();
 			}
-
 			counter = 0;
+			}
 		}
-	}
 	//check deviation
-	else if(deviationCheck>10){
+	else if (deviationCheck > 10) {
 		HAL_GPIO_WritePin(SD_O_GPIO_Port, SD_O_Pin, GPIO_PIN_SET);
 		out = 0;
-//		LOGS((uint8_t*)deviationCheckFail,strlen(deviationCheckFail));
-//		Error_Handler();
-	}
-	//regular output function(average value)
-	else{
-		out = ((raw1+raw2)/2);
+		//LOGS((uint8_t*)deviationCheckFail,strlen(deviationCheckFail));
+		//Error_Handler();
 	}
 
+	//regular output function(average value)
+	else {
+		out = ((raw1 + raw2) / 2);
+		uint16_t out_16 = out;
+
+		commonDataObj.torqueHigh = (uint8_t)(out_16 & 0xFF00);
+		commonDataObj.torqueLow = (uint8_t)(out_16 & 0x00FF);
+	}
 	return out;
 
-	data[0] = raw1;
-	data[1] = raw2;
 }
 
 
